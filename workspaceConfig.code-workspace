@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "path": "../ekonome"
+    },
+    {
+      "path": "."
+    },
+    {
+      "path": "../admin-panel"
+    }
+  ],
+  "settings": {}
+}

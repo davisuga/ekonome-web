@@ -1,0 +1,21 @@
+.RedTriangleSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  height: 50%;
+}
+.BlueTriangleSvg {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  z-index: -1;
+  height: 50%;
+}
+
+.logo {
+  display: flex;
+  flex-direction: row;
+  font-weight: bold;
+  align-self: center;
+}
