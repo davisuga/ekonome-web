@@ -1,49 +1,36 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 
 //UI imports
 import { ToastContainer, toast } from "react-toastify";
-import { VideoCallPopup, Container, RemoteStream, ButtonsRow } from "./styles";
+import { Container } from "./styles";
 import Profile from "../../components/Profile";
 import ScheduleOverview from "../../components/ScheduleOverview";
 import RecentActivity from "../../components/RecentActivity";
 import { Button } from "@rmwc/button";
-import { Fab } from "@rmwc/fab";
 
 // CSS imports
 import "react-toastify/dist/ReactToastify.css";
 import "@rmwc/menu/styles";
-import "@rmwc/fab/styles";
 
 // API-related imports
 import api from "../../services/firebase";
 import { useTranslation } from "react-i18next";
-import { startCall, rtc } from "../../services/agora";
 import { ToastProps } from "../../types";
-import { makeID } from "../../utils";
-
-console.time("set economist data");
+import RawVideoCall from "../../components/RawVideoCall";
 
 const Home: React.FC = () => {
   const { t } = useTranslation();
-  const [clientName, setClientName] = useState("");
-  const [channelName, setChannelName] = useState("");
-  const [callAccepted, setCallAccepted] = useState(true);
+  const [clientName, setClientName] = useState(null);
+  const [callAccepted, setCallAccepted] = useState(false);
   const [ifTheresNewCallRequest, setIfTheresNewCallRequest] = useState(false);
   const [callState, setCallState] = useState<
     "available" | "denied" | "stopped" | "busy" | "calling" | null
   >("available");
   const [clientUID, setClientUID] = useState("");
 
-  const acceptCall = () => {
-    const randomChannelName = makeID(12);
-
+  const acceptCall = async (roomID: string) => {
     api.setCallStatus("busy");
-    api.acceptCallRequest(randomChannelName);
-
-    setCallAccepted(true);
-    setIfTheresNewCallRequest(false);
-    setChannelName(randomChannelName);
-    startCall(randomChannelName);
+    api.acceptCallRequest(roomID);
   };
 
   const quit = async () => {
@@ -53,40 +40,6 @@ const Home: React.FC = () => {
       .catch(error => console.log("error", error));
     console.log("quitting...");
   };
-
-  const setupFirebaseListeners = () => {
-    console.log("api on setup firebase", api);
-
-    const economistId = api.getEconomistId();
-
-    api
-      .database()
-      .ref(`/economists/${economistId}/client_uid`)
-      .on("value", data => {
-        setClientUID(data.val());
-        console.log(`client UID: ${data.val()}`);
-      });
-
-    api
-      .database()
-      .ref(`/economists/${economistId}/call_status`)
-      .on("value", data => {
-        setCallState(data.val());
-        console.log(`call state: ${data.val()}`);
-      });
-
-    return api;
-  };
-
-  //Initial effect to set economist data and setup listeners
-  useEffect(() => {
-    setupFirebaseListeners();
-    console.log("api.economistId", api.getEconomistId());
-
-    return () => {
-      console.log();
-    };
-  }, []);
 
   //Effect to display toast
   useEffect(() => {
@@ -104,34 +57,85 @@ const Home: React.FC = () => {
       setIfTheresNewCallRequest(false);
       api.resetChannelNameAndCallStatus();
     } else if (clientUID?.length == 28 && callState == "calling") {
+      console.log("====================================");
+      console.log("got new call! getting name by uid...");
+      console.log("====================================");
       api.getUserNameByUid(clientUID).then(name => {
         setClientName(name);
+        //This state changes triggers the toast
         setIfTheresNewCallRequest(true);
       });
+    } else if (callState === "available") {
+      setCallAccepted(false);
     }
     return () => {
       console.log();
     };
   }, [callState]);
 
+  // Setup firebase listeners and reset
+  useEffect(() => {
+    const economistId = api.getEconomistId();
+
+    const economistReference = api.database().ref(`/economists/${economistId}`);
+
+    const clienUIDReference = api
+      .database()
+      .ref(`/economists/${economistId}/client_uid`);
+    const callStatus = api
+      .database()
+      .ref(`/economists/${economistId}/call_status`);
+
+    clienUIDReference.on("value", data => {
+      setClientUID(data.val());
+      console.log(`client UID: ${data.val()}`);
+    });
+
+    callStatus.on("value", data => {
+      setCallState(data.val());
+      console.log(`call state: ${data.val()}`);
+    });
+
+    console.log("api.economistId", api.getEconomistId());
+
+    economistReference
+      .onDisconnect()
+      .remove()
+      .then(() => {
+        economistReference.set(null);
+      });
+
+    window.addEventListener("beforeunload", () => {
+      callStatus.off();
+      clienUIDReference.off();
+    });
+
+    return () => {
+      callStatus.off();
+      clienUIDReference.off();
+    };
+  }, []);
+
+  const handleAcceptCall = () => {
+    setIfTheresNewCallRequest(false);
+    setCallAccepted(true);
+  };
+
+  const handleDenyCall = (closeToast: () => void) => {
+    closeToast();
+    setIfTheresNewCallRequest(false);
+    console.log(`economist id: ${api.getEconomistId()}`);
+    api.setCallStatus("denied");
+  };
+
   const Msg = ({ closeToast }: ToastProps) => (
     <div>
       Accept call from {clientName}?
       <br />
-      <Button onClick={() => acceptCall()}>yes</Button>
-      <Button
-        onClick={() => {
-          closeToast();
-          setIfTheresNewCallRequest(false);
-          console.log(`economist id: ${api.getEconomistId()}`);
-          api.setCallStatus("denied");
-        }}
-      >
-        No
-      </Button>
+      <Button onClick={() => handleAcceptCall()}>yes</Button>
+      <Button onClick={() => handleDenyCall(closeToast)}>No</Button>
     </div>
   );
-  // @ts-ignore
 
   return (
     <Container>
@@ -157,41 +161,7 @@ const Home: React.FC = () => {
         pauseOnHover
       />
 
-      {callAccepted && (
-        <VideoCallPopup id="local-stream" className="local-stream">
-          <RemoteStream id="remote-stream"></RemoteStream>
-          <ButtonsRow id="buttons-row">
-            <Fab
-              icon="volume_off"
-              id="stop-call"
-              onClick={() => api.setCallStatus("stopped")}
-              style={{
-                bottom: "30px",
-                zIndex: 999,
-                backgroundColor: "white",
-                color: "blue"
-              }}
-            ></Fab>
-            <Fab
-              icon="call_end"
-              id="stop-call"
-              onClick={() => api.setCallStatus("stopped")}
-              style={{ bottom: "30px", zIndex: 999, backgroundColor: "red" }}
-            ></Fab>
-            <Fab
-              icon="videocam_off"
-              id="stop-call"
-              onClick={() => api.setCallStatus("stopped")}
-              style={{
-                bottom: "30px",
-                zIndex: 999,
-                backgroundColor: "white",
-                color: "blue"
-              }}
-            ></Fab>
-          </ButtonsRow>
-        </VideoCallPopup>
-      )}
+      {callAccepted && <RawVideoCall notifyClient={acceptCall} />}
 
       <Profile>
         <Button raised onClick={() => quit()}>

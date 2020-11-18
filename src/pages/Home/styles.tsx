@@ -19,13 +19,17 @@ export const VideoCallPopup = styled.div`
   justify-content: space-between;
   flex-direction: column;
 `;
-export const RemoteStream = styled.div`
+export const LocalStream = styled.video`
+  height: 100%;
+`;
+export const RemoteStream = styled.video`
   position: absolute;
   background: transparent;
   z-index: 1;
   height: 300px;
   width: 190px;
   align-self: flex-start;
+  border: 1px solid black;
 `;
 
 export const Profile = styled.div`
